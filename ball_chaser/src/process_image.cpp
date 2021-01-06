@@ -1,15 +1,68 @@
-#include <iostream>
-#include <algorithm>
-#include <vector>
-using namespace std;
+
+
 
 
 #include "ros/ros.h"
 #include "ball_chaser/DriveToTarget.h"
 #include <sensor_msgs/Image.h>
 
+#include "image_transport/image_transport.h"
+#include <cv_bridge/cv_bridge.h>
+#include <opencv-3.2.0-dev/opencv/cv.hpp>
+#include <opencv-3.2.0-dev/opencv2/highgui.hpp>
+
 // Define a global client that can request services
 ros::ServiceClient client;
+
+namespace enc = sensor_msgs::image_encodings;
+
+static const char WINDOW[] = "Image window";
+
+class ImageConverter
+{
+  ros::NodeHandle nh_;
+  image_transport::ImageTransport it_;
+  image_transport::Subscriber image_sub_;
+  image_transport::Publisher image_pub_;
+  
+public:
+  ImageConverter()
+    : it_(nh_)
+  {
+    image_pub_ = it_.advertise("process_image_output", 1);
+    image_sub_ = it_.subscribe("/camera/rgb/image_raw", 1, &ImageConverter::imageCb, this);
+
+    cv::namedWindow(WINDOW);
+  }
+
+  ~ImageConverter()
+  {
+    cv::destroyWindow(WINDOW);
+  }
+
+  void imageCb(const sensor_msgs::ImageConstPtr& msg)
+  {
+    cv_bridge::CvImagePtr cv_ptr;
+    try
+    {
+      cv_ptr = cv_bridge::toCvCopy(msg, enc::BGR8);
+    }
+    catch (cv_bridge::Exception& e)
+    {
+      ROS_ERROR("cv_bridge exception: %s", e.what());
+      return;
+    }
+
+    if (cv_ptr->image.rows > 60 && cv_ptr->image.cols > 60)
+      cv::circle(cv_ptr->image, cv::Point(500, 500), 100, CV_RGB(255,0,0));
+
+    cv::imshow(WINDOW, cv_ptr->image);
+    cv::waitKey(3);
+    
+    image_pub_.publish(cv_ptr->toImageMsg());
+  }
+};
+
 
 // This function calls the command_robot service to drive the robot in the specified direction
 void drive_robot(float lin_x, float ang_z)
@@ -29,102 +82,20 @@ void drive_robot(float lin_x, float ang_z)
 
 }
 
-/***
-// This callback function continuously executes and reads the image data
+
+
 void process_image_callback(const sensor_msgs::Image img)
 {
-
     int white_pixel = 255;
-    float x = 0.0;
-    float z = 0.0;
-    float offset_accumulated = 0;
-    int count_total = 0;
-
-    // TODO: Loop through each pixel in the image and check if there's a bright white one
-    // Then, identify if this pixel falls in the left, mid, or right side of the image
-    // Depending on the white ball position, call the drive_bot function and pass velocities to it
-    // Request a stop when there's no white ball seen by the camera
-    for(int row = 0; row < img.height; row ++)
-    {
-         for(int column = 0; column < img.width; column ++)
-	 {
-            if (img.data[row * img.width + column] == white_pixel) {
-               
-                offset_accumulated += column - img.width / 2.0;
-                count_total++;
-    	    }
-	 }
-    }
-    if (count_total == 0) {
-        x = 0.0;
-        z = 0.0;
-	ROS_INFO_STREAM("No ball in front, stop");
-    }
-    else {
-	ROS_INFO_STREAM("There is a ball in front, go go!");
-        x = 0.1;
-	z = 0.5 * (img.width / 2.0 - idx_center_ball);
-
-        // Calculate the average offset (from -step/2.0 to +step/2.0)
-        // Normalize the average offset (from -1.0 to 1.0)
-        // Multiply with magic number -4.0 to turn
-        //z = -4.0 * offset_accumulated / count_total / (img.width /2.0);
-    }
     
-    // Send request to service
-    drive_robot(x, z);
-
-}
-***/
-
-void process_image_callback(const sensor_msgs::Image img)
-{
-    int white_pixel = 255;
-    int left_counter = 0;
-    int front_counter = 0;
-    int right_counter = 0;
 	
     // TODO: 
-    // Loop through each pixel in the image and check if there's a bright white one
-    for (int i = 0; i < img.height * img.step; i += 3) {
-        int position_index = i % (img.width * 3) / 3;
-	
-        if (img.data[i] == white_pixel && img.data[i + 1] == white_pixel && img.data[i + 2] == white_pixel) {
-            if(position_index <= 265) {
-		left_counter += 1;                
-            }
-            if(position_index > 265 && position_index <= 533) {
-		front_counter += 1;               
-            }
-            if(position_index > 533) {
-		right_counter += 1;                
-            }
-	}
-    }
-		
-    // Then, identify if this pixel falls in the left, mid, or right side of the image
-    vector<int> position_counter{left_counter, front_counter, right_counter};
-    int where_to_move = *max_element(position_counter.begin(), position_counter.end());
+    
 
-    // Depending on the white ball position, call the drive_bot function and pass velocities to it.
-    // Request a stop when there's no white ball seen by the camera.
-    if (where_to_move == 0){
-	ROS_INFO_STREAM("Searching the ball!");
-	drive_robot(0.0, 0.1);
-        drive_robot(0.0, 0.0); // This request brings my_robot to a complete stop
-    }
-    else if (where_to_move == left_counter) {
-	drive_robot(0.0, 0.1);  
-	ROS_INFO_STREAM("Turn to Right");
-    }
-    else if (where_to_move == front_counter) {
-        drive_robot(0.2, 0.0);  // This request drives my_robot robot forward
-	ROS_INFO_STREAM("Drive forward");
-    }
-    else if (where_to_move == right_counter) {
-        drive_robot(0.0, -0.1); 
-	ROS_INFO_STREAM("Turn to Left");
-    }
+
+
+ 
+    
 }
 
 
@@ -139,8 +110,8 @@ int main(int argc, char** argv)
     client = n.serviceClient<ball_chaser::DriveToTarget>("/ball_chaser/command_robot");
 
     // Subscribe to /camera/rgb/image_raw topic to read the image data inside the process_image_callback function
-    ros::Subscriber sub1 = n.subscribe("/camera/rgb/image_raw", 10, process_image_callback);
-
+    //ros::Subscriber sub1 = n.subscribe("/camera/rgb/image_raw", 10, process_image_callback);
+    ImageConverter ic;
     // Handle ROS communication events
     ros::spin();
 
