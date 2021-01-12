@@ -35,121 +35,62 @@ void process_image_callback(const sensor_msgs::Image img)
 {
 
     int white_pixel = 255;
-    float x = 0.0;
-    float z = 0.0;
-    int ball_pixel_num = 0;
+    int postion_index = -1;
+    int ball_column_index = -1;
+
 
 
     // TODO: Loop through each pixel in the image and check if there's a bright white one
     // Then, identify if this pixel falls in the left, mid, or right side of the image
     // Depending on the white ball position, call the drive_bot function and pass velocities to it
     // Request a stop when there's no white ball seen by the camera
-    for(int row = 300; row < img.height; row ++) // Because top half image is sky or wall, so from row 300
+
+
+    // Loop through each pixel in the image , size= img.height*img.step
+    for(int index = 0; index < img.height * img.step; index += 3) 
     {
-         for(int column = 0; column < img.width / 3; column ++) //left side search
-	 {
-            if (img.data[row * img.width + column] == white_pixel) {
-                
-                ball_pixel_num++ ;
-		if (ball_pixel_num > 80){// if there is greater than 80 pixels in white
-        		drive_robot(0.0, -0.1); 
-			ROS_INFO_STREAM("Turn to Left");
-			break;					
+
+
+	    //The reason to check i, i+1 and i+2 is because the image data is arranged as R, G, B values in the three consecutive array positions
+            if (img.data[index] == white_pixel 
+               && img.data[index + 1] == white_pixel 
+	       && img.data[index + 2] == white_pixel){
+                ROS_INFO_STREAM("yes,yes there is white ball");
+                postion_index = index; // save white ball to position index;
+
+		break;					
 		} 
-    	    }
-	 }
-
-         for(int column = img.width / 3; column <  (2 * img.width / 3); column ++) //middle side search
-	 {
-            if (img.data[row * img.width + column] == white_pixel) {
-                
-                ball_pixel_num++ ;
-		if (ball_pixel_num > 80){// if there is greater than 80 pixels in white
-        		drive_robot(0.2, 0.0);  // This request drives my_robot robot forward
-			ROS_INFO_STREAM("Drive forward");
-			break;					
-		} 
-    	    }
-	 }
-
-         for(int column = (2 * img.width / 3); column <  img.width; column ++) //right side search
-	 {
-            if (img.data[row * img.width + column] == white_pixel) {
-                
-                ball_pixel_num++ ;
-		if (ball_pixel_num > 80){// if there is greater than 80 pixels in white
-        		drive_robot(0.0, 0.1); 
-			ROS_INFO_STREAM("Turn to Right");
-			break;					
-		} 
-    	    }
-	 }
-
-
-
-
+    	
     }
-    if (ball_pixel_num == 0) {
-        x = 0.0;
-        z = 0.0;
-	ROS_INFO_STREAM("No ball in front, stop");
-	drive_robot(x, z);
+    ball_column_index = postion_index % img.width;  // white ball pixel's column index
+    ROS_INFO("ball_column=%d,postion_index=%d",ball_column_index,postion_index);
+    if (postion_index == -1) // there is no white ball, stop
+    {
+	drive_robot(0.0, 0.0); 
+	ROS_INFO_STREAM("there is no white ball, stop stop!");	
+    }
+    else{ // get the ball postion.
+
+	    if (ball_column_index >= 0 && ball_column_index < img.width /3){
+	    	drive_robot(0.0, 0.05); 
+		ROS_INFO_STREAM("Turn to Left");
+	    }
+	    if (ball_column_index >= img.width /3 && ball_column_index < 2 * img.width /3){
+	    	drive_robot(0.05, 0.0); 
+		ROS_INFO_STREAM("Drive forward");
+	    }
+	    if (ball_column_index >= 2 * img.width /3){
+	    	drive_robot(0.0, -0.05 ); 
+		ROS_INFO_STREAM("Turn to right");
+		//drive_robot(0.0, 0.0);
+	    }
     }
 
-  
+
+
 }
 
-/***
-void process_image_callback(const sensor_msgs::Image img)
-{
-    int white_pixel = 255;
-    int left_counter = 0;
-    int front_counter = 0;
-    int right_counter = 0;
-	
-    // TODO: 
-    // Loop through each pixel in the image and check if there's a bright white one
-    for (int i = 0; i < img.height * img.step; i += 3) {
-        int position_index = i % (img.width * 3) / 3;
-	
-        if (img.data[i] == white_pixel && img.data[i + 1] == white_pixel && img.data[i + 2] == white_pixel) {
-            if(position_index <= 265) {
-		left_counter += 1;                
-            }
-            if(position_index > 265 && position_index <= 533) {
-		front_counter += 1;               
-            }
-            if(position_index > 533) {
-		right_counter += 1;                
-            }
-	}
-    }
-		
-    // Then, identify if this pixel falls in the left, mid, or right side of the image
-    vector<int> position_counter{left_counter, front_counter, right_counter};
-    int where_to_move = *max_element(position_counter.begin(), position_counter.end());
 
-    // Depending on the white ball position, call the drive_bot function and pass velocities to it.
-    // Request a stop when there's no white ball seen by the camera.
-    if (where_to_move == 0){
-	ROS_INFO_STREAM("Searching the ball!");
-	drive_robot(0.0, 0.1);
-        drive_robot(0.0, 0.0); // This request brings my_robot to a complete stop
-    }
-    else if (where_to_move == left_counter) {
-	drive_robot(0.0, 0.1);  
-	ROS_INFO_STREAM("Turn to Right");
-    }
-    else if (where_to_move == front_counter) {
-        drive_robot(0.2, 0.0);  // This request drives my_robot robot forward
-	ROS_INFO_STREAM("Drive forward");
-    }
-    else if (where_to_move == right_counter) {
-        drive_robot(0.0, -0.1); 
-	ROS_INFO_STREAM("Turn to Left");
-    }
-}
-***/
 
 
 int main(int argc, char** argv)
